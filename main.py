@@ -164,11 +164,12 @@ class FinanceBot:
     def load_texts(self) -> Dict[str, str]:
         texts = {}
         try:
-            if not os.path.exists("texts.csv"):
-                logger.error("Файл texts.csv не найден")
+            csv_path = os.path.join(os.path.dirname(__file__), "texts.csv")
+            if not os.path.exists(csv_path):
+                logger.error("Файл texts.csv не найден по пути: %s", csv_path)
                 return texts
                 
-            with open("texts.csv", encoding="utf-8") as f:
+            with open(csv_path, mode='r', encoding='utf-8-sig') as f:
                 reader = csv.DictReader(f)
                 for row in reader:
                     if not row.get("key") or not row.get("text"):
@@ -180,14 +181,14 @@ class FinanceBot:
 
     def load_questions(self) -> Dict[int, Dict[int, dict]]:
         questions = defaultdict(dict)
-        csv_path = os.getenv("CSV_PATH", "questions_succ.csv")
+        csv_path = os.path.join(os.path.dirname(__file__), "questions_succ.csv")
         
         if not os.path.exists(csv_path):
             logger.error("Файл вопросов %s не найден", csv_path)
             return questions
             
         try:
-            with open(csv_path, mode='r', encoding='utf-8') as file:
+            with open(csv_path, mode='r', encoding='utf-8-sig') as file:
                 reader = csv.DictReader(file)
                 for row in reader:
                     try:
@@ -214,7 +215,8 @@ class FinanceBot:
                                 "confirmation": row.get("Подтверждение выбора", "").strip(),
                                 "emoji": row.get("Эмодзи", "🔹"),
                                 "portrait": row.get("Портрет", "универсальный работник"),
-                                "advice": row.get("Совет", "")
+                                "advice": row.get("Совет", ""),
+                                "description": row.get("Описание портрета", "")
                             }
                     except (ValueError, KeyError) as e:
                         logger.error("Ошибка обработки строки CSV: %s. Ошибка: %s", 
@@ -232,6 +234,7 @@ class FinanceBot:
         portrait_key = session.portrait.lower()
         portrait_description = ""
         
+        # Поиск описания портрета
         for branch in self.questions.values():
             for question in branch.values():
                 for option in question.get("options", {}).values():
@@ -251,6 +254,7 @@ class FinanceBot:
                 "Ты обладаешь достаточным сочетанием разумных качеств, которые помогут тебе последовательно добиться успеха в карьере."
             )
 
+        # Формирование уникальных советов
         unique_advices = list(dict.fromkeys(session.advices))
         number_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
         advice_lines = []
@@ -278,8 +282,10 @@ class FinanceBot:
             else:
                 advice_lines.append(f"{number_emojis[i] if i < len(number_emojis) else f'{i+1}.'} {formatted_advice}")
 
+        # Получение обновлений из канала
         channel_updates = await self.get_channel_updates()
 
+        # Формирование финального сообщения
         final_text = (
             f"{portrait_description}\n\n"
             f"🎯 <b>Твои персональные рекомендации:</b>\n"
@@ -391,10 +397,18 @@ class FinanceBot:
             
             try:
                 if question.get("image_path"):
-                    with open(question["image_path"], 'rb') as photo:
-                        await query.message.reply_photo(
-                            photo=photo,
-                            caption=text,
+                    try:
+                        with open(question["image_path"], 'rb') as photo:
+                            await query.message.reply_photo(
+                                photo=photo,
+                                caption=text,
+                                reply_markup=InlineKeyboardMarkup(keyboard),
+                                parse_mode="Markdown"
+                            )
+                    except FileNotFoundError:
+                        logger.warning(f"Image not found: {question['image_path']}")
+                        await query.edit_message_text(
+                            text=text,
                             reply_markup=InlineKeyboardMarkup(keyboard),
                             parse_mode="Markdown"
                         )
@@ -437,18 +451,33 @@ class FinanceBot:
             
         try:
             if question.get("image_path"):
-                with open(question["image_path"], 'rb') as photo:
+                try:
+                    with open(question["image_path"], 'rb') as photo:
+                        if update.callback_query:
+                            await update.callback_query.message.reply_photo(
+                                photo=photo,
+                                caption=text,
+                                reply_markup=InlineKeyboardMarkup(keyboard),
+                                parse_mode="Markdown"
+                            )
+                        else:
+                            await update.message.reply_photo(
+                                photo=photo,
+                                caption=text,
+                                reply_markup=InlineKeyboardMarkup(keyboard),
+                                parse_mode="Markdown"
+                            )
+                except FileNotFoundError:
+                    logger.warning(f"Image not found: {question['image_path']}")
                     if update.callback_query:
-                        await update.callback_query.message.reply_photo(
-                            photo=photo,
-                            caption=text,
+                        await update.callback_query.edit_message_text(
+                            text=text,
                             reply_markup=InlineKeyboardMarkup(keyboard),
                             parse_mode="Markdown"
                         )
                     else:
-                        await update.message.reply_photo(
-                            photo=photo,
-                            caption=text,
+                        await update.message.reply_text(
+                            text=text,
                             reply_markup=InlineKeyboardMarkup(keyboard),
                             parse_mode="Markdown"
                         )
