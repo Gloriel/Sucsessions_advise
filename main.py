@@ -26,6 +26,7 @@ def mask_sensitive_data(message):
         return message
     # Маскируем BOT_TOKEN
     message = re.sub(r'(BOT_TOKEN[\s=:]+)([^\s]+)', r'\1***', message, flags=re.IGNORECASE)
+    # Можно добавить другие чувствительные данные
     return message
 
 # Кастомный форматтер логов с маскировкой
@@ -122,19 +123,24 @@ class FinanceBot:
         self.rss_feed_url = os.getenv("RSS_FEED_URL")        
 
     def _clean_title(self, title: str) -> str:
-        title = ' '.join(title.split())
+        """Очищает заголовок, оставляя только основной текст до точки или первые слова"""
+        title = ' '.join(title.split())  # Убираем лишние пробелы
+
+        # Попробуем взять всё до первой точки
         match = re.match(r'^([^.]*)\.', title)
         if match:
             cleaned = match.group(1).strip()
             if cleaned:
                 return cleaned
 
+        # Если точки нет — берём первые 6 слов
         words = title.split()
         if len(words) > 6:
             return ' '.join(words[:6]) + '...'
         return title
 
     async def get_channel_updates(self) -> str:
+        """Получаем последние 5 постов из RSS фида канала"""
         if not self.rss_feed_url:
             logger.warning("RSS_FEED_URL не указан в .env")
             return ""
@@ -212,7 +218,7 @@ class FinanceBot:
                             }
                     except (ValueError, KeyError) as e:
                         logger.error("Ошибка обработки строки CSV: %s. Ошибка: %s", 
-                                    mask_sensitive_data(str(row)), mask_sensitive_data(str(e)))
+                                  mask_sensitive_data(str(row)), mask_sensitive_data(str(e)))
                         continue
         except Exception as e:
             logger.error("Ошибка загрузки CSV: %s", mask_sensitive_data(str(e)))
@@ -353,11 +359,7 @@ class FinanceBot:
 
     async def handle_branch(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
-        try:
-            await query.answer()
-        except Exception as e:
-            logger.warning(f"Ошибка при answer: {e}")
-
+        await query.answer()
         user_id = update.effective_user.id
         try:
             branch = int(query.data.split("_")[1])
@@ -469,11 +471,7 @@ class FinanceBot:
 
     async def handle_answer(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         query: CallbackQuery = update.callback_query
-        try:
-            await query.answer()
-        except Exception as e:
-            logger.warning(f"Ошибка при answer: {e}")
-
+        await query.answer()
         user_id = update.effective_user.id
         session = self.user_sessions.get(user_id)
         
@@ -514,11 +512,7 @@ class FinanceBot:
 
     async def handle_back(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
-        try:
-            await query.answer()
-        except Exception as e:
-            logger.warning(f"Ошибка при answer: {e}")
-
+        await query.answer()
         user_id = update.effective_user.id
         session = self.user_sessions.get(user_id)
         
@@ -530,14 +524,7 @@ class FinanceBot:
 
     async def handle_restart(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
-        try:
-            await query.answer()
-        except telegram.error.BadRequest as e:
-            if "Query is too old" not in str(e):
-                logger.error(f"Error answering callback: {e}")
-        except Exception as e:
-            logger.warning(f"Ошибка при answer: {e}")
-    
+        await query.answer()
         user_id = update.effective_user.id
         self.user_sessions[user_id] = UserSession()
         await self.start(update, context)
