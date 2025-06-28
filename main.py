@@ -20,17 +20,41 @@ from telegram.ext import (
 # Загрузка переменных окружения
 load_dotenv()
 
-# Настройка логирования
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO,
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler('finance_bot.log')
-    ]
-)
-logger = logging.getLogger(__name__)
+# Функция для маскировки чувствительных данных в логах
+def mask_sensitive_data(message):
+    if not isinstance(message, str):
+        return message
+    # Маскируем BOT_TOKEN
+    message = re.sub(r'(BOT_TOKEN[\s=:]+)([^\s]+)', r'\1***', message, flags=re.IGNORECASE)
+    # Можно добавить другие чувствительные данные
+    return message
 
+# Кастомный форматтер логов с маскировкой
+class SafeLogFormatter(logging.Formatter):
+    def format(self, record):
+        original = super().format(record)
+        return mask_sensitive_data(original)
+
+# Настройка логирования
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Обработчики логов
+console_handler = logging.StreamHandler(sys.stdout)
+file_handler = logging.FileHandler('finance_bot.log')
+
+# Применяем безопасный форматтер
+formatter = SafeLogFormatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+console_handler.setFormatter(formatter)
+file_handler.setFormatter(formatter)
+
+# Добавляем обработчики
+logger.addHandler(console_handler)
+logger.addHandler(file_handler)
+
+# Отключаем логирование для некоторых шумных модулей
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("telegram").setLevel(logging.WARNING)
 
 class UserSession:
     __slots__ = ['branch', 'current_q', 'advices', 'confirmations', 'history', 'portraits']
@@ -134,7 +158,7 @@ class FinanceBot:
                 seen.add(link)
             return "\n".join(updates)
         except Exception as e:
-            logger.error("Ошибка загрузки CSV", exc_info=True)
+            logger.error("Ошибка при получении RSS: %s", mask_sensitive_data(str(e)))
             return ""
 
     def load_texts(self) -> Dict[str, str]:
@@ -151,7 +175,7 @@ class FinanceBot:
                         continue
                     texts[row["key"]] = row["text"]
         except Exception as e:
-            logger.error(f"Ошибка загрузки texts.csv: {e}")
+            logger.error("Ошибка загрузки texts.csv: %s", mask_sensitive_data(str(e)))
         return texts
 
     def load_questions(self) -> Dict[int, Dict[int, dict]]:
@@ -159,7 +183,7 @@ class FinanceBot:
         csv_path = os.getenv("CSV_PATH", "questions_succ.csv")
         
         if not os.path.exists(csv_path):
-            logger.error(f"Файл вопросов {csv_path} не найден")
+            logger.error("Файл вопросов %s не найден", csv_path)
             return questions
             
         try:
@@ -193,10 +217,11 @@ class FinanceBot:
                                 "advice": row.get("Совет", "")
                             }
                     except (ValueError, KeyError) as e:
-                        logger.error(f"Ошибка обработки строки CSV: {row}. Ошибка: {e}")
+                        logger.error("Ошибка обработки строки CSV: %s. Ошибка: %s", 
+                                  mask_sensitive_data(str(row)), mask_sensitive_data(str(e)))
                         continue
         except Exception as e:
-            logger.error(f"Ошибка загрузки CSV: {e}")
+            logger.error("Ошибка загрузки CSV: %s", mask_sensitive_data(str(e)))
         return questions
 
     async def show_final_message(self, user_id: int, query: CallbackQuery):
@@ -231,10 +256,8 @@ class FinanceBot:
         advice_lines = []
         
         for i, advice in enumerate(unique_advices):
-            # Убираем звездочки из форматирования
             formatted_advice = advice.replace('*', '')
             
-            # Разделяем по точке или переносу строки
             dot_pos = formatted_advice.find('.')
             newline_pos = formatted_advice.find('\n')
             
@@ -249,7 +272,6 @@ class FinanceBot:
             if split_pos > 0:
                 portrait_name = formatted_advice[:split_pos].strip()
                 advice_text = formatted_advice[split_pos+1:].strip()
-                # Добавляем точку обратно, если разделили по точке
                 if formatted_advice[split_pos] == '.':
                     portrait_name += '.'
                 advice_lines.append(f"{number_emojis[i] if i < len(number_emojis) else f'{i+1}.'} <b>{portrait_name}</b>\n{advice_text}")
@@ -278,8 +300,7 @@ class FinanceBot:
                     parse_mode="HTML",
                     disable_web_page_preview=True
                 )
-            except Exception as edit_error:
-                logger.warning(f"Не удалось отредактировать сообщение, отправляем новое: {edit_error}")
+            except Exception:
                 await query.message.reply_text(
                     text=final_text,
                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Начать заново", callback_data="restart")]]),
@@ -288,10 +309,10 @@ class FinanceBot:
                 )
                 try:
                     await query.message.delete()
-                except Exception as delete_error:
-                    logger.warning(f"Не удалось удалить предыдущее сообщение: {delete_error}")
+                except Exception:
+                    pass
         except Exception as e:
-            logger.error(f"Критическая ошибка при показе финального сообщения: {e}")
+            logger.error("Критическая ошибка при показе финального сообщения: %s", mask_sensitive_data(str(e)))
             await query.message.reply_text(
                 "Произошла ошибка при формировании результатов. Пожалуйста, попробуйте снова.",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Начать заново", callback_data="restart")]])
@@ -333,7 +354,7 @@ class FinanceBot:
                     parse_mode="HTML"
                 )
         except Exception as e:
-            logger.error(f"Ошибка в команде start: {e}")
+            logger.error("Ошибка в команде start: %s", mask_sensitive_data(str(e)))
             await message.reply_text("Произошла ошибка. Пожалуйста, попробуйте позже.")
 
     async def handle_branch(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -346,7 +367,6 @@ class FinanceBot:
             session = self.user_sessions[user_id]
             session.start_branch(branch)
             
-            # Пропускаем первый вопрос ветки 1 (он только для старта)
             if branch == 1:
                 session.current_q = 2
                 session.history = [1, 2]
@@ -356,7 +376,6 @@ class FinanceBot:
                 await self.clean_session(user_id, update, "Ошибка: вопрос не найден")
                 return
             
-            # Не добавляем intro для первого вопроса ветки
             text = question['text']
             if session.confirmations:
                 text = "✅ " + "\n\n".join(session.confirmations) + "\n\n" + text
@@ -386,10 +405,10 @@ class FinanceBot:
                         parse_mode="Markdown"
                     )
             except Exception as e:
-                logger.error(f"Ошибка показа вопроса: {e}")
+                logger.error("Ошибка показа вопроса: %s", mask_sensitive_data(str(e)))
                 await self.clean_session(user_id, update, "Ошибка при отображении вопроса.")
         except Exception as e:
-            logger.error(f"Ошибка в handle_branch: {e}")
+            logger.error("Ошибка в handle_branch: %s", mask_sensitive_data(str(e)))
             await self.clean_session(user_id, update, "Произошла ошибка. Давайте начнём заново.")
 
     async def show_question(self, update: Update, user_id: int):
@@ -447,7 +466,7 @@ class FinanceBot:
                         parse_mode="Markdown"
                     )
         except Exception as e:
-            logger.error(f"Ошибка показа вопроса: {e}")
+            logger.error("Ошибка показа вопроса: %s", mask_sensitive_data(str(e)))
             await self.clean_session(user_id, update, "Ошибка при отображении вопроса.")
 
     async def handle_answer(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -488,7 +507,7 @@ class FinanceBot:
             session.move_to_next(next_q)
             await self.show_question(update, user_id)
         except Exception as e:
-            logger.error(f"Ошибка обработки ответа: {e}")
+            logger.error("Ошибка обработки ответа: %s", mask_sensitive_data(str(e)))
             await self.clean_session(user_id, update, "Произошла ошибка при обработке ответа.")
 
     async def handle_back(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -518,7 +537,7 @@ class FinanceBot:
             else:
                 await update.message.reply_text(msg)
         except Exception as e:
-            logger.error(f"Ошибка при очистке сессии: {e}")
+            logger.error("Ошибка при очистке сессии: %s", mask_sensitive_data(str(e)))
 
     def run(self):
         token = os.getenv("BOT_TOKEN")
@@ -540,7 +559,7 @@ class FinanceBot:
         except KeyboardInterrupt:
             logger.info("Бот остановлен вручную")
         except Exception as e:
-            logger.error(f"Ошибка при запуске бота: {e}")
+            logger.error("Ошибка при запуске бота: %s", mask_sensitive_data(str(e)))
 
 
 if __name__ == "__main__":
@@ -548,5 +567,5 @@ if __name__ == "__main__":
         bot = FinanceBot()
         bot.run()
     except Exception as e:
-        logger.error(f"Критическая ошибка: {e}")
+        logger.error("Критическая ошибка: %s", mask_sensitive_data(str(e)))
         input("Нажмите Enter для выхода...")
