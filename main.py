@@ -134,7 +134,7 @@ class FinanceBot:
                 seen.add(link)
             return "\n".join(updates)
         except Exception as e:
-            logger.error(f"Ошибка при получении RSS: {e}")
+            logger.error("Ошибка загрузки CSV", exc_info=True)
             return ""
 
     def load_texts(self) -> Dict[str, str]:
