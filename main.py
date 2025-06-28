@@ -41,7 +41,7 @@ logger.setLevel(logging.INFO)
 
 # Обработчики логов
 console_handler = logging.StreamHandler(sys.stdout)
-file_handler = logging.FileHandler('finance_bot.log')
+file_handler = logging.FileHandler('succ_bot.log')
 
 # Применяем безопасный форматтер
 formatter = SafeLogFormatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
