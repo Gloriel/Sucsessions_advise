@@ -113,7 +113,7 @@ class FinanceBot:
         self.questions = self.load_questions()
         self.texts = self.load_texts()
         self.community_link = os.getenv("COMMUNITY_LINK", "https://t.me/+25yK94v9nCoyNzFi")
-        self.rss_feed_url = os.getenv("RSS_FEED_URL", "https://fetchrss.com/feed/aI7uY390SFnyaI7uRt1OAptT.rss")
+        self.rss_feed_url = "https://fetchrss.com/feed/aI7uY390SFnyaI7uRt1OAptT.rss"
 
     def _clean_title(self, title: str) -> str:
         title = ' '.join(title.split())
