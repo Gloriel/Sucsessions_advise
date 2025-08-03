@@ -322,8 +322,7 @@ class FinanceBot:
         salary_template_link = "https://docs.google.com/document/d/1hOaWvUnRAfpb0Gf4yo6Xp49lFmCQ2oCsaxKMyVSyVt8/edit?tab=t.0"
 
         final_text = (
-            f"{portrait_description}\n"
-            f"🎯 <b>Твои персональные рекомендации:</b>\n"
+            f"🎯 Спасибо за пройденный тест! <b>Итак, что можно сказать о Вас:</b>\n\n"
             + "\n".join(advice_lines) + "\n"
             f"\n""📌 <b>Бонус:</b> Уверен в своей ценности? Используй шаблон письменного заявления на повышение зарплаты:\n"
             f"<a href='{salary_template_link}'>📄 Открыть в GoogleDoc </a>\n\n"
